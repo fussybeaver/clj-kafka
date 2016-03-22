@@ -46,7 +46,7 @@
 (given (send-consume-fetch [(test-message "msg 1")  (test-message "msg 2")  (test-message "msg 3")])
        (expect identity 3))
 
-(defn send-consume-reset-fetch
+(defn send-consume-reset-fetch-earliest
   [messages]
   (with-test-broker test-broker-config
     (with-resource [c (zk/consumer consumer-config)]
@@ -69,5 +69,31 @@
               offset (.offset (get offset-response "test:0"))]
           offset)))))
 
-(given (send-consume-reset-fetch [(test-message "msg 1") (test-message "msg 2")])
+(given (send-consume-reset-fetch-earliest [(test-message "msg 1") (test-message "msg 2")])
        (expect identity 0))
+
+(defn send-consume-reset-fetch-latest
+  [messages]
+  (with-test-broker test-broker-config
+    (with-resource [c (zk/consumer consumer-config)]
+      zk/shutdown
+      (let [p (producer producer-config)]
+        (send-messages p messages)
+
+        (let [msgs (take 1 (zk/messages c "test"))]
+          (str "Received msgs: " msgs))
+        (zk/shutdown c)
+        (Thread/sleep 100)
+
+        (let [offset-reset-response (reset-consumer-offsets "localhost:9999,localhost:9999" consumer-config "test" "clj-kafka.test.consumer", :latest)
+              ignore (str offset-reset-response)]
+          offset-reset-response)
+        (Thread/sleep 100)
+
+        (let [offset-response (fetch-consumer-offsets "localhost:9999,localhost:9999" consumer-config "test" "clj-kafka.test.consumer")
+              ignore (str offset-response)
+              offset (.offset (get offset-response "test:0"))]
+          offset)))))
+
+(given (send-consume-reset-fetch-latest [(test-message "msg 1") (test-message "msg 2") (test-message "msg 3")])
+       (expect identity 3))
